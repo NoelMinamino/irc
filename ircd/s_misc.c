@@ -196,14 +196,8 @@ char	*get_client_name(aClient *sptr, int showip)
 				(void)sprintf(nbuf, "%s[%.*s@%s]",
 					sptr->name, USERLEN,
 					(!(sptr->flags & FLAGS_GOTID)) ? "" :
-					sptr->auth, sptr->user ? sptr->user->sip :
-#ifdef INET6 
-					      inetntop(AF_INET6,
-						       (char *)&sptr->ip,
-						       ipv6string, sizeof(ipv6string))
-#else
-					      inetntoa((char *)&sptr->ip)
-#endif
+					sptr->auth,
+					get_client_ip(sptr)
 					);
 			else
 			    {
@@ -245,6 +239,18 @@ char	*get_client_host(aClient *cptr)
 			(!(cptr->flags & FLAGS_GOTID)) ? "" : cptr->auth,
 			HOSTLEN, cptr->user->sip);
 	return nbuf;
+}
+
+char	*get_client_ip(aClient *cptr)
+{
+	if (cptr->user)
+	{
+		return cptr->user->sip;
+	}
+	else
+	{
+		return inetntop(AF_INET6, (char *)&cptr->ip, ipv6string, sizeof(ipv6string));
+	}
 }
 
 /*
@@ -1009,14 +1015,13 @@ void	initruntimeconf(void)
 	iconf.aconnect = 1; /* default to ON */
 	iconf.split = 1; /* ircd starts in split-mode */
 	iconf.caccept = 2; /* accept clients when no split */
-
-	/* Defaults set in config.h */
-	iconf.split_minservers = MAX(DEFAULT_SPLIT_SERVERS, SPLIT_SERVERS);
-	iconf.split_minusers = MAX(DEFAULT_SPLIT_USERS, SPLIT_USERS);
+	iconf.split_minservers = -1; /* must be specified in ircd.conf */
+	iconf.split_minusers = -1; /* must be specified in ircd.conf */
 
 	if ((bootopt & BOOT_STANDALONE))
 	{
 		/* standalone mode */
+		/* standalone splitmode is -1 not 3 */
 		iconf.split = -1;
 	}
 }

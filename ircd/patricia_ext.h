@@ -55,9 +55,7 @@ typedef struct _prefix_t
 	union
 	{
 		struct in_addr sin;
-#ifdef INET6
 		struct in6_addr sin6;
-#endif				/* IPV6 */
 	}
 	add;
 }
@@ -153,5 +151,9 @@ do { \
         } \
     } while (0)
 
+/*
+ * 2011-01-20  Piotr Kucharski
+ *  * patricia_ext.h: forgotten #undef EXTERN (from kinlo).
+ */
 #undef EXTERN
 #endif /* _PATRICIA_H */

@@ -27,9 +27,7 @@ static const volatile char rcsid[] = "@(#)$Id: support.c,v 1.46 2009/03/15 01:25
 #include "s_externs.h"
 #undef SUPPORT_C
 
-#ifdef INET6
 char ipv6string[INET6_ADDRSTRLEN];
-#endif
 
 unsigned char minus_one[]={ 255, 255, 255, 255, 255, 255, 255, 255, 255,
                                         255, 255, 255, 255, 255, 255, 255, 0};
@@ -124,7 +122,11 @@ char	*strtoken(char **save, char *str, char *fs)
 ** NOT encouraged to use!
 */
 
-char	*strtok(char *str, char *fs)
+/*
+ * 2014-08-21  Piotr Kucharski
+ *  * support.c/support_ext.h: use const char for second param of strtok.
+ */
+char	*strtok(char *str, const char *fs)
 {
 	static char *pos;
 
@@ -132,6 +134,23 @@ char	*strtok(char *str, char *fs)
 }
 
 #endif /* HAVE_STRTOK */
+
+int snprintf_append(char *str, int size, int pos, const char *fmt, ...)
+{
+	int ret, max;
+
+	if(pos >= size)
+		return 0;
+	else
+		max = size - pos;
+
+	va_list ap;
+	va_start(ap, fmt);
+	ret = vsnprintf(str + pos, max, fmt, ap);
+	va_end(ap);
+
+	return ret;
+}
 
 #if !defined(HAVE_STRERROR)
 /*
@@ -196,7 +215,6 @@ char	*mybasename(char *path)
 	return path;
 }
 
-#ifdef INET6
 /*
  * inetntop: return the : notation of a given IPv6 internet number.
  *	     or the dotted-decimal notation for IPv4
@@ -301,7 +319,6 @@ int	inetpton(int af, const char *src, void *dst)
 	    }
 	return inet_pton(af, src, dst);
 }
-#endif
 
 #if !defined(HAVE_INET_NTOA)
 /*
@@ -776,27 +793,6 @@ dgetsreturnbuf:
 	goto dgetsagain;
 }
 
-/*
- * Make 'readable' version string.
- */
-char	*make_version(void)
-{
-	int ve, re, mi, dv, pl;
-	char ver[15];
-
-	sscanf(PATCHLEVEL, "%2d%2d%2d%2d%2d", &ve, &re, &mi, &dv, &pl);
-	/* version & revision */
-	sprintf(ver, "%d.%d", ve, (mi == 99) ? re + 1 : re);
-	if (mi == 99) mi = -1;
-	/* minor revision */
-	sprintf(ver + strlen(ver), ".%d", dv ? mi+1 : mi);
-	if (dv)	/* alpha/beta, note how visual patchlevel is raised above */
-		sprintf(ver + strlen(ver), "%c%d", DEVLEVEL, dv);
-	if (pl)	/* patchlevel */
-		sprintf(ver + strlen(ver), "p%d", pl);
-	return mystrdup(ver);
-}
-
 #ifndef CLIENT_COMPILE
 /* Make RPL_ISUPPORT (005) numeric contents */
 char	**make_isupport(void)
@@ -816,7 +812,7 @@ char	**make_isupport(void)
 		LOCALNICKLEN, TOPICLEN, TOPICLEN, MAXBANS, CHANNELLEN, CHIDLEN);
 
 	tis[1] = (char *) MyMalloc(BUFSIZE);
-	sprintf(tis[1],	"PENALTY FNC EXCEPTS=e INVEX=I CASEMAPPING=ascii");
+	sprintf(tis[1],	"PENALTY FNC WHOX EXCEPTS=e INVEX=I CASEMAPPING=ascii");
 	if (networkname)
 	{
 		strcat(tis[1], " NETWORK=");

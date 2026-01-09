@@ -182,6 +182,7 @@ char	*iline_flags_to_string(long flags)
 /* Convert P-line flags from string
  * D - delayed port
  * S - server only port
+ * T - secure (SSL/TLS) port
  */
 long pline_flags_parse(char *string)
 {
@@ -193,6 +194,13 @@ long pline_flags_parse(char *string)
 	if (index(string, 'S'))
 	{
 		tmp |= PFLAG_SERVERONLY;
+	}
+	/*
+	 * This only marks the port as secure, you must ensure that it actually is  -- mh 2020-04-27
+	 */
+	if (index(string, 'T'))
+	{
+		tmp |= PFLAG_TLS;
 	}
 	return tmp;
 }
@@ -212,7 +220,12 @@ char *pline_flags_to_string(long flags)
 	{
 		*s++ = 'S';
 	}
-	
+
+	if (flags & PFLAG_TLS)
+	{
+		*s++ = 'T';
+	}
+
 	if (s == pfsbuf)
 	{
 		*s++ = '-';
@@ -386,9 +399,7 @@ int    match_ipmask(char *mask, aClient *cptr, int maskwithusername)
 	char	dummy[128];
 	char	*omask;
 	u_long	lmask;
-#ifdef	INET6
 	int	j;
-#endif
  
 	omask = mask;
 	strncpyzt(dummy, mask, sizeof(dummy));
@@ -410,13 +421,6 @@ int    match_ipmask(char *mask, aClient *cptr, int maskwithusername)
 	}
 	if (!m)
 		return 0;       /* x.x.x.x/0 always matches */
-#ifndef	INET6
-	if (m < 0 || m > 32)
-		goto badmask;
-	lmask = htonl((u_long)0xffffffffL << (32 - m));
-	addr.s_addr = inetaddr(mask);
-	return ((addr.s_addr ^ cptr->ip.s_addr) & lmask) ? 1 : 0;
-#else
 	if (m < 0 || m > 128)
 		goto badmask;
 
@@ -450,7 +454,6 @@ int    match_ipmask(char *mask, aClient *cptr, int maskwithusername)
 	}
 
 	return 0;
-#endif
 badmask:
 	if (maskwithusername)
 	sendto_flag(SCH_ERROR, "Ignoring bad mask: %s", omask);
@@ -1375,9 +1378,7 @@ int	openconf(void)
 #endif
 			"-I", includedir,
 #endif
-#ifdef INET6
 			"-DINET6",
-#endif
 			IRCDM4_PATH, configfile, (char *) NULL);
 		if (serverbooting)
 		{
@@ -1410,7 +1411,6 @@ int	openconf(void)
 ** returns a pointer to a string.
 */
 
-#ifdef	INET6
 char	*ipv6_convert(char *orig)
 {
 	char	*s, *t, *buf = NULL;
@@ -1463,7 +1463,6 @@ char	*ipv6_convert(char *orig)
 
 	return buf;
 }
-#endif
 
 /*
 ** initconf() 
@@ -1681,7 +1680,6 @@ int 	initconf(int opt)
 		{
 			if ((tmp = getfield(NULL)) == NULL)
 				break;
-#ifdef	INET6
 			if (aconf->status & 
 				(CONF_CONNECT_SERVER|CONF_ZCONNECT_SERVER
 				|CONF_CLIENT|CONF_KILL
@@ -1691,9 +1689,7 @@ int 	initconf(int opt)
 				aconf->host = ipv6_convert(tmp);
 			else
 				DupString(aconf->host, tmp);
-#else
-			DupString(aconf->host, tmp);
-#endif
+
 			if ((tmp = getfield(NULL)) == NULL)
 				break;
 			DupString(aconf->passwd, tmp);
@@ -1798,7 +1794,10 @@ int 	initconf(int opt)
 					iline_flags_parse(tmp3) :
 					pline_flags_parse(tmp3));
 			}
-
+			if(aconf->status & CONF_LISTEN_PORT && tmp4 && *tmp4)
+			{
+				DupString(aconf->source_ip, tmp4);
+			}
 			/* trying to find exact conf line in already existing
 			 * conf, so we don't delete old one, just update it */
 			if (
@@ -1927,7 +1926,86 @@ int 	initconf(int opt)
 				for(i = 0; i < sizeof(me.serv->sid); i++)
 					me.serv->sid[i] = toupper(tmp[i]);
 			}
-						
+
+			/* confsplit allows you to change the SS/SU values via ircd.conf
+			 * instead of recompiling with new DEFAULT_SPLIT_* or using /SET
+			 * SPLIT which is lost on server restart. See doc/confsplit.txt
+			 * for more details. -- mh 2020-01-22 */
+
+			int dosplitcheck = 0; /* we only need split check if values changed and it is a rehash */
+			if (tmp3 && *tmp3)
+			{
+				for (s = tmp3; *s; s++)
+				{
+					if (!isdigit(*s))
+					{
+						break;
+					}
+				}
+
+				if (*s == '\0')
+				{
+					i = atoi(tmp3);
+
+					if (i < SPLIT_SERVERS)
+					{
+						i = SPLIT_SERVERS;
+					}
+
+					if (i != iconf.split_minservers)
+					{
+						if (opt == 0)
+						{
+							/* it's a rehash */
+							sendto_flag(SCH_NOTICE, "changed value of SPLIT_SERVERS (min: %d) from %d to %d",
+								SPLIT_SERVERS, iconf.split_minservers, i);
+							dosplitcheck = 1;
+						}
+						iconf.split_minservers = i;
+					}
+				}
+			}
+
+			if (tmp4 && *tmp4)
+			{
+				for (s = tmp4; *s; s++)
+				{
+					if (!isdigit(*s))
+					{
+						break;
+					}
+				}
+
+				if (*s == '\0')
+				{
+					i = atoi(tmp4);
+
+					if (i < SPLIT_USERS)
+					{
+						i = SPLIT_USERS;
+					}
+
+					if (i != iconf.split_minusers)
+					{
+						if (opt == 0)
+						{
+							/* it's a rehash */
+							sendto_flag(SCH_NOTICE, "changed value of SPLIT_USERS (min: %d) from %d to %d",
+								SPLIT_USERS, iconf.split_minusers, i);
+
+							dosplitcheck = 1;
+						}
+						iconf.split_minusers = i;
+					}
+				}
+			}
+
+			/* do a split check if any values changed, but only needed in rehash */
+			if (dosplitcheck == 1)
+			{
+				check_split();
+			}
+
 			if (aconf->port)
 				setup_ping(aconf);
 		    }
@@ -2013,36 +2091,21 @@ static	int	lookup_confhost(aConfItem *aconf)
 	ln.value.aconf = aconf;
 	ln.flags = ASYNC_CONF;
 
-#ifdef INET6
 	if(inetpton(AF_INET6, s, aconf->ipnum.s6_addr))
 		;
-#else
-	if (isdigit(*s))
-		aconf->ipnum.s_addr = inetaddr(s);
-#endif
 	else if ((hp = gethost_byname(s, &ln)))
 		bcopy(hp->h_addr, (char *)&(aconf->ipnum),
 			sizeof(struct IN_ADDR));
-#ifdef	INET6
 	else
 	{
 		bcopy(minus_one, aconf->ipnum.s6_addr, IN6ADDRSZ);
 		goto badlookup;
 	}
 
-#else
-	if (aconf->ipnum.s_addr == -1)
-		goto badlookup;
-#endif
-
 	return 0;
 
 badlookup:
-#ifdef INET6
 	if (AND16(aconf->ipnum.s6_addr) == 255)
-#else
-	if (aconf->ipnum.s_addr == -1)
-#endif
 		bzero((char *)&aconf->ipnum, sizeof(struct IN_ADDR));
 	Debug((DEBUG_ERROR,"Host/server name error: (%s) (%s)",
 		aconf->host, aconf->name));
@@ -2070,12 +2133,8 @@ int	find_kill(aClient *cptr, int timedklines, char **comment)
 	}
 
 	host = cptr->sockhost;
-#ifdef INET6
 	ip = (char *) inetntop(AF_INET6, (char *)&cptr->ip, ipv6string,
 			       sizeof(ipv6string));
-#else
-	ip = (char *) inetntoa((char *)&cptr->ip);
-#endif
 	if (!strcmp(host, ip))
 		ip = NULL; /* we don't have a name for the ip# */
 	name = cptr->user->username;
@@ -2345,11 +2404,7 @@ void	find_bounce(aClient *cptr, int class, int fd)
 				sprintf(rpl, replies[RPL_BOUNCE], ME, "unknown",
 					aconf->name, aconf->port);
 				strcat(rpl, "\r\n");
-#ifdef INET6
 				sendto(fd, rpl, strlen(rpl), 0, 0, 0);
-#else
-				send(fd, rpl, strlen(rpl), 0);
-#endif
 				return;
 			}
 			else
@@ -2734,13 +2789,7 @@ badkline:
 		status = tkline ? CONF_TOTHERKILL : CONF_OTHERKILL;
 		user++;
 	}
-#ifdef INET6
 	host = ipv6_convert(host);
-#endif
-	if (strlen(reason) > TOPICLEN)
-	{
-		reason[TOPICLEN] = '\0';
-	}
 
 #ifdef KLINE
 	if (!tkline)

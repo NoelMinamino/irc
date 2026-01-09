@@ -402,6 +402,7 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 		if (IsXlined(sptr))
 		{
 			sptr->exitc = EXITC_XLINE;
+			sendto_flag(SCH_LOCAL, "X-lined %s.", get_client_host(sptr));
 			return exit_client(cptr, sptr, &me,
 				XLINE_EXIT_REASON);
 		}
@@ -479,8 +480,8 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 		if (!isvalidusername(lbuf))
 		{
 			ircstp->is_ref++;
-			sendto_flag(SCH_LOCAL, "Invalid username:  %s@%s.",
-				lbuf, sptr->sockhost);
+			sendto_flag(SCH_LOCAL, "Invalid username %s from %s.",
+						lbuf, get_client_host(sptr));
 			sptr->exitc = EXITC_REF;
 			return exit_client(cptr, sptr, &me, "Invalid username");
 		}
@@ -573,12 +574,9 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 
 			ircstp->is_ref++;
 			sptr->exitc = exit_msg[i].shortm;
-			if (exit_msg[i].shortm != EXITC_BADPASS)
-			{
-				sendto_flag(SCH_LOCAL, "%s from %s.",
-					exit_msg[i].longm,
-					get_client_host(sptr));
-			}
+			sendto_flag(SCH_LOCAL, "%s from %s.",
+						exit_msg[i].longm,
+						get_client_host(sptr));
 			return exit_client(cptr, cptr, &me, exit_msg[i].longm);
 		}
 #ifndef	NO_PREFIX
@@ -631,8 +629,7 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 		 */
 		if (!IsKlineExempt(sptr) && find_kill(sptr, 0, &reason))
 		{
-			sendto_flag(SCH_LOCAL, "K-lined %s@%s.",
-				    user->username, sptr->sockhost);
+			sendto_flag(SCH_LOCAL, "K-lined %s.", get_client_host(sptr));
 			ircstp->is_ref++;
 			sptr->exitc = EXITC_KLINE;
 			if (reason)
@@ -751,11 +748,11 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 		sendto_one(sptr, replies[RPL_WELCOME], ME, BadTo(nick), buf);
 		/* This is a duplicate of the NOTICE but see below...*/
 		sendto_one(sptr, replies[RPL_YOURHOST], ME, BadTo(nick),
-			   get_client_name(&me, FALSE), version);
+				   get_client_name(&me, FALSE), IRC_VERSION);
 		sendto_one(sptr, replies[RPL_CREATED], ME, BadTo(nick), creation);
 		sendto_one(sptr, replies[RPL_MYINFO], ME, BadTo(parv[0]),
-			   ME, version);
-		
+				   ME, IRC_VERSION);
+
 		isup = isupport;
 		while (*isup)
 		{
@@ -770,6 +767,14 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 		(void)m_motd(sptr, sptr, 1, parv);
 		if (IsRestricted(sptr))
 			sendto_one(sptr, replies[ERR_RESTRICTED], ME, BadTo(nick));
+#ifdef WHOISTLS_NOTICE
+		/* send a notice to client if the connection is secure (SSL/TLS).
+		 * notice is defined as WHOISTLS_NOTICE in config.h -- mh 2020-04-27 */
+		if (IsTLS(sptr))
+		{
+			sendto_one(sptr, ":%s NOTICE %s :%s", ME, nick, WHOISTLS_NOTICE);
+		}
+#endif
 		if (IsConfNoResolve(sptr->confs->value.aconf))
 		{
 			sendto_one(sptr, ":%s NOTICE %s :Due to an administrative"
@@ -806,7 +811,7 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 		sendto_one(acptr,
 				":%s UNICK %s %s %s %s %s %s :%s",
 				user->servp->sid, nick, user->uid,
-				user->username, user->host, user->sip,
+				user->username, user->host, get_client_ip(sptr),
 				(*buf) ? buf : "+", sptr->info);
 	}	/* for(my-leaf-servers) */
 #ifdef	USE_SERVICES
@@ -1675,12 +1680,13 @@ int	m_notice(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 /*
 ** who_one
-**	sends one RPL_WHOREPLY to sptr concerning acptr & repchan
+**	sends one RPL_WHOREPLY or RPL_WHOSPCRPL to sptr concerning acptr & repchan
 */
 static	void	who_one(aClient *sptr, aClient *acptr, aChannel *repchan,
-		Link *lp)
+		Link *lp, struct who_opts *opts)
 {
 	char	status[5];
+	char *s;
 	int	i = 0;
 
 	if (acptr->user->flags & FLAGS_AWAY)
@@ -1699,18 +1705,60 @@ static	void	who_one(aClient *sptr, aClient *acptr, aChannel *repchan,
 			status[i++] = '+';
 	    }
 	status[i] = '\0';
-	sendto_one(sptr, replies[RPL_WHOREPLY], ME, BadTo(sptr->name),
-		   (repchan) ? (repchan->chname) : "*", acptr->user->username,
-		   acptr->user->host, acptr->user->server, acptr->name,
-		   status, acptr->hopcount, acptr->user->servp->sid, acptr->info);
-}
 
+	if((opts->flags & ~WHO_FLAG_OPERS_ONLY) != 0)
+	{
+		char buf[BUFSIZE];
+		int len = snprintf(buf, BUFSIZE, replies[RPL_WHOSPCRPL], ME, BadTo(sptr->name));
+
+		if (opts->flags & WHO_FLAG_TOKEN)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", opts->token != NULL ? opts->token : "0");
+		if (opts->flags & WHO_FLAG_CHANNEL)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", (repchan) ? (repchan->chname) : "*");
+		if (opts->flags & WHO_FLAG_USER)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->username);
+		if (opts->flags & WHO_FLAG_IP)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", get_client_ip(acptr));
+		if (opts->flags & WHO_FLAG_HOST)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->host);
+		if (opts->flags & WHO_FLAG_SERVER)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->server);
+		if (opts->flags & WHO_FLAG_NICK)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->name);
+		if (opts->flags & WHO_FLAG_FLAGS)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", status);
+		if (opts->flags & WHO_FLAG_HOP)
+			len += snprintf_append(buf, BUFSIZE, len, " %d", acptr->hopcount);
+		if (opts->flags & WHO_FLAG_IDLE)
+			len += snprintf_append(buf, BUFSIZE, len, " %ld",
+								   MyClient(acptr) ? (long) (timeofday - acptr->user->last) : 0);
+		if (opts->flags & WHO_FLAG_ACCOUNT)
+			len += snprintf_append(buf, BUFSIZE, len, " 0");
+		if (opts->flags & WHO_FLAG_OP_LEVEL)
+			len += snprintf_append(buf, BUFSIZE, len, " n/a");
+		if (opts->flags & WHO_FLAG_SID)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->servp->sid);
+		if (opts->flags & WHO_FLAG_UID)
+			len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->uid);
+		if (opts->flags & WHO_FLAG_INFO)
+			len += snprintf_append(buf, BUFSIZE, len, " :%s", acptr->info);
+
+		sendto_one(sptr, buf);
+	}
+	else
+	{
+		sendto_one(sptr, replies[RPL_WHOREPLY], ME, BadTo(sptr->name),
+				   (repchan) ? (repchan->chname) : "*", acptr->user->username,
+				   acptr->user->host, acptr->user->server, acptr->name,
+				   status, acptr->hopcount, acptr->user->servp->sid, acptr->info);
+	}
+}
 
 /*
 ** who_channel
 **	lists all users on a given channel
 */
-static	void	who_channel(aClient *sptr, aChannel *chptr, int oper)
+static	void	who_channel(aClient *sptr, aChannel *chptr, struct who_opts *opts)
 {
 	Reg	Link	*lp;
 	int	member;
@@ -1722,7 +1770,7 @@ static	void	who_channel(aClient *sptr, aChannel *chptr, int oper)
 		{
 			for (lp = chptr->members; lp; lp = lp->next)
 			{
-				if (oper && !IsAnOper(lp->value.cptr))
+				if ((opts->flags & WHO_FLAG_OPERS_ONLY) && !IsAnOper(lp->value.cptr))
 				{
 					continue;
 				}
@@ -1730,13 +1778,13 @@ static	void	who_channel(aClient *sptr, aChannel *chptr, int oper)
 				{
 					continue;
 				}
-				who_one(sptr, lp->value.cptr, chptr, lp);
+				who_one(sptr, lp->value.cptr, chptr, lp, opts);
 			}
 		}
 	}
 	else if ((lp = find_user_link(chptr->members, sptr)))
 	{
-		who_one(sptr, lp->value.cptr, chptr, lp);
+		who_one(sptr, lp->value.cptr, chptr, lp, opts);
 	}
 }
 
@@ -1747,7 +1795,7 @@ static	void	who_channel(aClient *sptr, aChannel *chptr, int oper)
 **	
 **	Reduced CPU load - 05/2001
 */
-static	void	who_find(aClient *sptr, char *mask, int oper)
+static	void	who_find(aClient *sptr, char *mask, struct who_opts *opts)
 {
 	aChannel *chptr = NULL;
 	Link	*lp,*lp2;
@@ -1770,7 +1818,7 @@ static	void	who_find(aClient *sptr, char *mask, int oper)
 				continue;
 			}
 			
-			if (oper && !IsAnOper(acptr))
+			if ((opts->flags & WHO_FLAG_OPERS_ONLY) && !IsAnOper(acptr))
 			{
 				continue;
 			}
@@ -1786,7 +1834,7 @@ static	void	who_find(aClient *sptr, char *mask, int oper)
 			     match(mask, acptr->user->host) == 0 ||
 			     match(mask, acptr->user->server) == 0 ||
 			     match(mask, acptr->info) == 0)
-				who_one(sptr, acptr, chptr, NULL);
+				who_one(sptr, acptr, chptr, NULL, opts);
 		
 		}
 	}
@@ -1814,7 +1862,7 @@ static	void	who_find(aClient *sptr, char *mask, int oper)
 		}
 		
 		/* we wanted only opers */
-		if (oper && !IsAnOper(acptr))
+		if ((opts->flags & WHO_FLAG_OPERS_ONLY) && !IsAnOper(acptr))
 		{
 			continue;
 		}
@@ -1830,11 +1878,87 @@ static	void	who_find(aClient *sptr, char *mask, int oper)
 		     match(mask, acptr->user->host) == 0 ||
 		     match(mask, acptr->user->server) == 0 ||
 		     match(mask, acptr->info) == 0)
-			who_one(sptr, acptr, NULL, NULL);
+			who_one(sptr, acptr, NULL, NULL, opts);
 	}
 	
 }
 
+void parse_who_arg(char *arg, struct who_opts *opts) {
+	char *s;
+
+	// WHO <mask> o
+	if (*arg == 'o')
+	{
+		opts->flags |= WHO_FLAG_OPERS_ONLY;
+	}
+
+	// WHOX
+	if ((s = strchr(arg, '%')) != NULL)
+	{
+		char buf[BUFSIZE];
+		s++;
+
+		for (; *s; s++)
+		{
+			switch (*s)
+			{
+				case 't' :
+					opts->flags |= WHO_FLAG_TOKEN;
+					break;
+				case 'c' :
+					opts->flags |= WHO_FLAG_CHANNEL;
+					break;
+				case 'u' :
+					opts->flags |= WHO_FLAG_USER;
+					break;
+				case 'i' :
+					opts->flags |= WHO_FLAG_IP;
+					break;
+				case 'h' :
+					opts->flags |= WHO_FLAG_HOST;
+					break;
+				case 's' :
+					opts->flags |= WHO_FLAG_SERVER;
+					break;
+				case 'n' :
+					opts->flags |= WHO_FLAG_NICK;
+					break;
+				case 'f' :
+					opts->flags |= WHO_FLAG_FLAGS;
+					break;
+				case 'd' :
+					opts->flags |= WHO_FLAG_HOP;
+					break;
+				case 'l' :
+					opts->flags |= WHO_FLAG_IDLE;
+					break;
+				case 'a' :
+					opts->flags |= WHO_FLAG_ACCOUNT;
+					break;
+				case 'o' :
+					opts->flags |= WHO_FLAG_OP_LEVEL;
+					break;
+				case 'S' :
+					opts->flags |= WHO_FLAG_SID;
+					break;
+				case 'U' :
+					opts->flags |= WHO_FLAG_UID;
+					break;
+				case 'r' :
+					opts->flags |= WHO_FLAG_INFO;
+					break;
+				case ',':
+					s++;
+					int token_len = strlen(s);
+					if (*s && token_len <= 3)
+						opts->token = s;
+					s += token_len;
+					s--;
+					break;
+			}
+		}
+	}
+}
 
 /*
 ** m_who
@@ -1845,16 +1969,23 @@ static	void	who_find(aClient *sptr, char *mask, int oper)
 int	m_who(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	aChannel *chptr;
-	int	oper = parc > 2 ? (*parv[2] == 'o' ): 0; /* Show OPERS only */
-	int	penalty = 0;
-	char	*p, *mask, *channame;
+	int penalty = 0;
+	char *p, *mask, *channame;
+	struct who_opts opts;
+	opts.flags = 0;
+	opts.token = NULL;
 
 	if (parc < 2)
 	{
-		who_find(sptr, NULL, oper);
+		who_find(sptr, NULL, &opts);
 		sendto_one(sptr, replies[RPL_ENDOFWHO], ME, BadTo(parv[0]), "*");
 		/* it was very CPU intensive */
 		return MAXPENALTY;
+	}
+
+	if(parc > 2)
+	{
+		parse_who_arg(parv[2], &opts);
 	}
 
 	/* get rid of duplicates */
@@ -1913,7 +2044,7 @@ int	m_who(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			chptr = find_channel(channame, NULL);
 			if (chptr)
 			{
-				who_channel(sptr, chptr, oper);
+				who_channel(sptr, chptr, &opts);
 			}
 			else
 			{
@@ -1943,7 +2074,7 @@ int	m_who(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			if (acptr)
 			{
 				/* We found client, so send WHO for it */
-				who_one(sptr, acptr, NULL, NULL);
+				who_one(sptr, acptr, NULL, NULL, &opts);
 			}
 			else
 			{
@@ -1955,7 +2086,7 @@ int	m_who(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				/* simplify mask */
 				(void)collapse(mask);
 
-				who_find(sptr, mask, oper);
+				who_find(sptr, mask, &opts);
 				penalty += MAXPENALTY;
 			}
 		}
@@ -2042,6 +2173,13 @@ static	void	send_whois(aClient *sptr, aClient *acptr)
 
 	if (IsAnOper(acptr))
 		sendto_one(sptr, replies[RPL_WHOISOPERATOR], ME, BadTo(sptr->name), name);
+
+	/* send a 320 numeric RPL_WHOISTLS reply if client is connected with SSL/TLS.
+	 * reply defined as WHOISTLS in config.h -- mh 2020-04-27 */
+	if (IsTLS(acptr))
+	{
+		sendto_one(sptr, replies[RPL_WHOISTLS], ME, BadTo(sptr->name), name, WHOISTLS);
+	}
 
 	if (acptr->user && MyConnect(acptr))
 		sendto_one(sptr, replies[RPL_WHOISIDLE], ME, BadTo(sptr->name),
@@ -2230,16 +2368,18 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	server   = parv[3];
 	realname = parv[4];
 	
-#ifdef INET6
 	inetntop(AF_INET6, (char *)&sptr->ip, ipbuf, sizeof(ipbuf));
-#else
-	strcpy(ipbuf, (char *)inetntoa((char *)&sptr->ip));
-#endif
 	user = make_user(sptr, strlen(ipbuf));
 	strcpy(user->sip, ipbuf);
 
 	user->servp = me.serv;
 	me.serv->refcnt++;
+
+	if (IsConfTLS(cptr->acpt->confs->value.aconf))
+	{
+		SetTLS(sptr);
+	}
+
 #ifdef	DEFAULT_INVISIBLE
 	SetInvisible(sptr);
 #endif
@@ -2323,7 +2463,7 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 int	m_post(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	sendto_flag(SCH_LOCAL, "Denied http-post connection from %s.",
-		cptr->sockhost);
+				get_client_host(cptr));
 	return m_quit(cptr, sptr, parc, parv);
 }
 
@@ -2821,12 +2961,8 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #ifdef UNIXPORT
 			IsUnixSocket(sptr) ? sptr->sockhost :
 #endif
-#ifdef INET6
                        inet_ntop(AF_INET6, (char *)&sptr->ip, ipv6string,
 			       sizeof(ipv6string))
-#else
-                       inetntoa((char *)&sptr->ip)
-#endif
 		       );
 #endif /* defined(USE_SYSLOG) && defined(SYSLOG_OPER) */
 
@@ -2861,12 +2997,9 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #ifdef UNIXPORT
 				IsUnixSocket(sptr) ? sptr->sockhost :
 #endif
-#ifdef INET6
 				inetntop(AF_INET6, (char *)&sptr->ip,
 					ipv6string, sizeof(ipv6string))
-#else
-				inetntoa((char *)&sptr->ip)
-#endif
+
 				);
 			(void)alarm(3);
 		  	(void)write(logfile, buf, strlen(buf));
@@ -3118,6 +3251,8 @@ int	m_umode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 						      ":%s AWAY :", parv[0]);
 #endif
 			default :
+				if(*m == 'r' && cptr && !IsServer(cptr)) /* do not allow clients to set +r */
+					break;
 				for (s = user_modes; (flag = *s); s += 2)
 					if (*m == (char)(*(s+1)))
 				    {

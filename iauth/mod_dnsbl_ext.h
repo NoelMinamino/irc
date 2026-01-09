@@ -1,6 +1,8 @@
 /************************************************************************
- *   IRC - Internet Relay Chat, iauth/mod_lhex_ext.h
- *   Copyright (C) 1998-1999 Christophe Kalt and Andrew Snare
+ *   IRC - Internet Relay Chat, iauth/mod_socks_ext.h
+ *   Copyright (C) 2003 erra@RusNet
+ *   Copyright (C) 2003 Francois Baligant
+ *   Copyright (C) 2024 IRCnet.com team
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -18,11 +20,12 @@
  */
 
 /*  This file contains external definitions for global variables and functions
-    defined in iauth/mod_lhex.c.
+ *  defined in iauth/mod_dnsbl.c.
  */
 
-/*  External definitions for global variables.
+/*
+ * External definitions for global variables.
  */
-#ifndef MOD_LHEX_C
-extern aModule Module_lhex;
-#endif /* MOD_LHEX_C */
+#ifndef MOD_DNSBL_C
+extern aModule Module_dnsbl;
+#endif

@@ -139,6 +139,10 @@ void	write_pidfile(void)
 	(void) truncate(IAUTHPID_PATH, 0);
 	if (( fd = open(IAUTHPID_PATH, O_CREAT|O_WRONLY, 0600)) >= 0)
 	{
+		/*
+		 * 2014-04-19  Kurt Roeckx
+		 *  * iauth.c/write_pidfile(): Don't create a '0' filled buffer
+		 */
 		(void) sprintf(pidbuf, "%d\n", (int)getpid());
 		if (write(fd, pidbuf, strlen(pidbuf)) == -1)
 		{
@@ -164,47 +168,45 @@ int	main(int argc, char *argv[])
 		exit(0);
 
 	if (isatty(0))
-	    {
-		(void)printf("iauth %s", make_version());
+	{
+		(void) printf("iauth %s", IRC_VERSION);
 #if defined(USE_DSM)
-			(void)printf(" (with DSM support)\n");
+		(void)printf(" (with DSM support)\n");
 #else
-			(void)printf("\n");
+		(void) printf("\n");
 #endif
 		if (argc == 3 && !strcmp(argv[1], "-c"))
-		    {
-			(void)printf("\nReading \"%s\"\n\n", argv[2]);
+		{
+			(void) printf("\nReading \"%s\"\n\n", argv[2]);
 			conf_read(argv[2]);
-		    }
+		}
 		else
-		    {
-#if defined(INET6)
+		{
 			(void)printf("\t+INET6\n");
-#endif
 #if defined(IAUTH_DEBUG)
 			(void)printf("\t+IAUTH_DEBUG\n");
 #endif
 #if defined(USE_POLL)
 			(void)printf("\t+USE_POLL\n");
 #endif
-		    }
+		}
 		exit(0);
-	    }
+	}
 
 	init_signals();
 	init_syslog();
 	xopt = conf_read(NULL);
 	init_filelogs();
 	sendto_log(ALOG_DMISC, LOG_NOTICE, "Daemon starting (%s%s).",
-		   make_version(),
+			   IRC_VERSION,
 #if defined(IAUTH_DEBUG)
-		   "+debug"
+			   "+debug"
 #else
-		   ""
+			   ""
 #endif
-		   );
+	);
 	init_io();
-	sendto_ircd("V %s", make_version());
+	sendto_ircd("V %s", IRC_VERSION);
 	sendto_ircd("O %s", xopt);
 	conf_ircd();
 

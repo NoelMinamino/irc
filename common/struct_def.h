@@ -42,7 +42,7 @@ typedef struct        LineItem aExtData;
 #define	HOSTLEN		63	/* Length of hostname.  Updated to         */
 				/* comply with RFC1123                     */
 
-#if defined(INET6) && (INET6_ADDRSTRLEN > HOSTLEN)
+#if (INET6_ADDRSTRLEN > HOSTLEN)
 #error HOSTLEN must not be smaller than INET6_ADDRSTRLEN
 #endif
 
@@ -195,6 +195,7 @@ typedef enum Status {
 #ifdef XLINE
 #define FLAGS_XLINED	0x0100	/* X-lined client */
 #endif
+#define FLAGS_TLS       0x0200 /* user is on a secure connection port (SSL/TLS) -- mh 2020-04-27 */
 #define	SEND_UMODES	(FLAGS_INVISIBLE|FLAGS_OPER|FLAGS_WALLOP|FLAGS_AWAY|FLAGS_RESTRICT)
 #define	ALL_UMODES	(SEND_UMODES|FLAGS_LOCOP)
 
@@ -263,7 +264,8 @@ typedef enum Status {
 #define SetXlined(x)		((x)->user->flags |= FLAGS_XLINED)
 #define ClearXlined(x)		((x)->user->flags &= ~FLAGS_XLINED)
 #endif
-
+#define IsTLS(x)        ((x)->user && (x)->user->flags & FLAGS_TLS)
+#define SetTLS(x)       ((x)->user->flags |= FLAGS_TLS)
 
 /*
  * defined debugging levels
@@ -389,9 +391,11 @@ struct	ListItem	{
 
 #define PFLAG_DELAYED		0x00001
 #define PFLAG_SERVERONLY	0x00002
+#define PFLAG_TLS           0x00004
 
 #define IsConfDelayed(x)	((x)->flags & PFLAG_DELAYED)
 #define IsConfServeronly(x)	((x)->flags & PFLAG_SERVERONLY)
+#define IsConfTLS(x)        ((x)->flags & PFLAG_TLS)
 
 #define	IsIllegal(x)	((x)->status & CONF_ILLEGAL)
 
@@ -988,6 +992,30 @@ typedef enum ServerChannels {
 #   error LOCALNICKLEN must not be bigger than NICKLEN
 #endif
 
+/* WHO parameter flags */
+#define WHO_FLAG_OPERS_ONLY	0x0001
+#define WHO_FLAG_CHANNEL	0x0002
+#define WHO_FLAG_HOP		0x0004
+#define WHO_FLAG_FLAGS		0x0008
+#define WHO_FLAG_HOST		0x0010
+#define WHO_FLAG_IP			0x0020
+#define WHO_FLAG_IDLE		0x0040
+#define WHO_FLAG_NICK		0x0080
+#define WHO_FLAG_INFO		0x0100
+#define WHO_FLAG_SERVER		0x0200
+#define WHO_FLAG_TOKEN		0x0400
+#define WHO_FLAG_USER		0x0800
+#define WHO_FLAG_ACCOUNT	0x1000
+#define WHO_FLAG_OP_LEVEL	0x2000
+#define WHO_FLAG_SID		0x4000
+#define WHO_FLAG_UID		0x8000
+
+struct who_opts
+{
+	int flags;
+	const char *token;
+};
+
 /*
  * base for channel IDs and UIDs
  */
@@ -998,17 +1026,17 @@ typedef enum ServerChannels {
 #define TSET_ACONNECT 0x001
 #define TSET_POOLSIZE 0x002
 #define TSET_CACCEPT 0x004
-#define TSET_SPLIT 0x008
 #define TSET_SHOWALL (int) ~0
 
 /* Runtime configuration structure */
 typedef struct
 {
-	int aconnect;	/* 0: off, 1: on, 2: ND */
+	int aconnect;	/* 0 - OFF 1 - ON */
+	/* standalone splitmode is -1 not 3 */
 	int split;	/* -1: standalone, 0: no, >0 yes (and since when) */
 	int split_minservers;
 	int split_minusers;
-	int caccept;	/* 0: off, 1: on, 2: split */
+	int caccept;	/* 0 - OFF 1 - ON 2 - SPLIT */
 } iconf_t;
 
 /* O:line flags, used also in is_allowed() */

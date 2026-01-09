@@ -20,7 +20,9 @@ sumhash="`(cd ../ircd; @SUM@ hash.c)`"
 sumsmisc="`(cd ../ircd; @SUM@ s_misc.c)`"
 sumircd="`(cd ../ircd; @SUM@ ircd.c)`"
 
-creation=`date | \
+LC_ALL=C
+#creation=`date | \
+creation=`LC_ALL=C date | \
 awk '{if (NF == 6) \
          { print $1 " "  $2 " " $3 " "  $6 " at " $4 " " $5 } \
 else \
@@ -62,7 +64,6 @@ static const volatile char rcsid[] = "@(#)\$Id: version.c.SH.in,v 1.14 2010/08/1
 
 char *generation = "$generation";
 char *creation = "$creation";
-char *version;				/* Filled by make_version() */
 char **isupport;			/* Filled by make_isupport() */
 char *pass_version = PATCHLEVEL;
 

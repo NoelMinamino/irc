@@ -201,25 +201,13 @@ static	int	proxy_write(u_int cl)
 {
 	char query[128];	/* big enough to hold all queries */
 	int query_len;		/* length of query */
-#ifndef	INET6
-	u_int a, b, c, d;
-#else
 	struct in6_addr	addr;
-#endif
 
-#ifndef	INET6
-	if (sscanf(cldata[cl].ourip, "%u.%u.%u.%u", &a,&b,&c,&d) != 4)
-#else
 	if (inetpton(AF_INET6, cldata[cl].ourip, (void *) addr.s6_addr) != 1)
-#endif
 	{
 		sendto_log(ALOG_DSOCKS|ALOG_IRCD, LOG_ERR,
 			"webproxy_write(%d): "
-#ifndef INET6
-			"sscanf"
-#else
 			"inetpton"
-#endif
 			"(\"%s\") failed", cl, cldata[cl].ourip);
 		close(cldata[cl].wfd);
 		cldata[cl].wfd = 0;
@@ -355,6 +343,10 @@ static	char	*proxy_init(AnInstance *self)
 
 	if (mydata->options == 0)
 	{
+		/*
+		 * 2014-04-19  Kurt Roeckx
+		 *  * mod_webproxy.c/proxy_init(): On unknown options free the buffer.
+		 */
 		free(mydata);
 		return "Aie! unknown option(s): nothing to be done!";
 	}

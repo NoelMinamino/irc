@@ -106,11 +106,11 @@ static	int	send_users(aClient *, aClient *, int, char **);
 **	parv[0] = sender prefix
 **	parv[1] = remote server
 */
-int	m_version(aClient *cptr, aClient *sptr, int parc, char *parv[])
+int m_version(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
-	if (hunt_server(cptr,sptr,":%s VERSION :%s",1,parc,parv)==HUNTED_ISME)
+	if (hunt_server(cptr, sptr, ":%s VERSION :%s", 1, parc, parv) == HUNTED_ISME)
 		sendto_one(sptr, replies[RPL_VERSION], ME, BadTo(parv[0]),
-			   version, debugmode, ME, me.serv->sid, serveropts);
+				   IRC_VERSION, ME, me.serv->sid, serveropts);
 	return 2;
 }
 
@@ -1264,7 +1264,7 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 					   acptr->name, acptr->user->uid,
 					   acptr->user->username,
 					   acptr->user->host,
-					   acptr->user->sip,
+					   get_client_ip(acptr),
 					   (*buf) ? buf : "+", acptr->info);
 		    }
 		else if (IsService(acptr) &&
@@ -1834,13 +1834,9 @@ static void report_fd(aClient *sptr, aClient *acptr, char *to)
 	if (IsMe(acptr) || !acptr->acpt || !IsRegistered(acptr))
 		return;
 	ret = 
-#ifdef INET6
 		inetntop(AF_INET6,
 		(char *)&acptr->acpt->ip,
 		ipv6string, sizeof(ipv6string));
-#else
-		inetntoa((char *)&acptr->acpt->ip);
-#endif
 	s = strlen(ret) + 1;
 	memcpy(locip, ret, s < sizeof(locip) ? s : sizeof(locip));
 	locip[sizeof(locip) - 1] = 0;
@@ -1849,13 +1845,9 @@ static void report_fd(aClient *sptr, aClient *acptr, char *to)
 		acptr->fd,
 		locip,
 		acptr->acpt->port,
-#ifdef INET6
 		inetntop(AF_INET6,
 		(char *)&acptr->ip,
 		ipv6string, sizeof(ipv6string)),
-#else
-		inetntoa((char *)&acptr->ip),
-#endif
 		acptr->port,acptr->name,
 		acptr->user ? acptr->user->username : acptr->auth,
 		acptr->user ? timeofday - acptr->user->last : -1
@@ -2773,16 +2765,15 @@ int	m_trace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				return 1;
 			}
 			/* passthru */
-              		sendto_one(sptr, replies[RPL_TRACELINK], ME,
-				   BadTo(parv[0]), version, debugmode,
-				   (maskedserv || showsid) ?
-				   	parv[1] : acptr->name,
-				   acptr->from->name,
-				   acptr->from->serv->version,
-				   (acptr->from->flags & FLAGS_ZIP) ? "z" : "",
-        	               	   (int)(timeofday - acptr->from->firsttime),
-                	           (int)DBufLength(&acptr->from->sendQ),
-                        	   (int)DBufLength(&sptr->from->sendQ));
+			sendto_one(sptr, replies[RPL_TRACELINK], ME,
+					   BadTo(parv[0]), IRC_VERSION,
+					   (maskedserv || showsid) ? parv[1] : acptr->name,
+					   acptr->from->name,
+					   acptr->from->serv->version,
+					   (acptr->from->flags & FLAGS_ZIP) ? "z" : "",
+					   (int) (timeofday - acptr->from->firsttime),
+					   (int) DBufLength(&acptr->from->sendQ),
+					   (int) DBufLength(&sptr->from->sendQ));
 
 			sendto_one(acptr, ":%s TRACE :%s", sptr->name,
 			      (maskedserv || showsid) ? parv[1] : acptr->name);
@@ -2832,8 +2823,8 @@ int	m_trace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		}
 	}
 	sendto_one(sptr, replies[RPL_TRACEEND], ME, BadTo(parv[0]),
-		   showsid ? me.serv->sid : acptr->name, version, debugmode);
-	
+			   showsid ? me.serv->sid : acptr->name, IRC_VERSION);
+
 	return 2;
 }
 
@@ -2857,7 +2848,7 @@ int	m_etrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				IsAnOper(acptr) ? "Oper" : "User",
 				get_client_class(acptr),
 				acptr->name, acptr->user->username,
-				acptr->user->host, acptr->user->sip,
+				acptr->user->host, get_client_ip(acptr),
 #ifdef XLINE
 				acptr->user2, acptr->user3, 
 #else
@@ -2880,7 +2871,7 @@ int	m_etrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				IsAnOper(acptr) ? "Oper" : "User", 
 				get_client_class(acptr), 
 				acptr->name, acptr->user->username, 
-				acptr->user->host, acptr->user->sip,
+				acptr->user->host, get_client_ip(acptr),
 #ifdef XLINE
 				acptr->user2, acptr->user3, 
 #else
@@ -2891,12 +2882,12 @@ int	m_etrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	}
 
 	sendto_one(sptr, replies[RPL_ETRACEEND], ME, sptr->name, ME,
-			version, debugmode);
+			   IRC_VERSION);
 	return 2;
 }
 
 #ifdef ENABLE_SIDTRACE
-int	m_sidtrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
+int m_sidtrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	aClient *acptr;
 
@@ -2908,26 +2899,26 @@ int	m_sidtrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		if (!IsPerson(acptr))
 			continue;
 
-		if (strncmp(acptr->user->uid, me.serv->sid, SIDLEN-1))
+		if (strncmp(acptr->user->uid, me.serv->sid, SIDLEN - 1))
 			continue;
 
 		sendto_one(sptr, replies[RPL_ETRACEFULL],
-			ME, sptr->name,
-			IsAnOper(acptr) ? "Oper" : "User", 
-			MyClient(acptr) ? get_client_class(acptr) : -1, 
-			acptr->name, acptr->user->username,
-			acptr->user->host, acptr->user->sip, 
+				   ME, sptr->name,
+				   IsAnOper(acptr) ? "Oper" : "User",
+				   MyClient(acptr) ? get_client_class(acptr) : -1,
+				   acptr->name, acptr->user->username,
+				   acptr->user->host, get_client_ip(acptr),
 #ifdef XLINE
-			MyClient(acptr) ? acptr->user2 : "-",
-			MyClient(acptr) ? acptr->user3 : "-",
+				   MyClient(acptr) ? acptr->user2 : "-",
+				   MyClient(acptr) ? acptr->user3 : "-",
 #else
-			"-", "-",
+				   "-", "-",
 #endif
-			acptr->info);
+				   acptr->info);
 	}
 
 	sendto_one(sptr, replies[RPL_ETRACEEND], ME, sptr->name, "*",
-			version, debugmode);
+			   IRC_VERSION);
 
 	return 3;
 }
@@ -3215,7 +3206,6 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		{ TSET_POOLSIZE, "POOLSIZE" },
 		{ TSET_ACONNECT, "ACONNECT" },
 		{ TSET_CACCEPT, "CACCEPT" },
-		{ TSET_SPLIT, "SPLIT" },
 		{ 0, NULL }
 	};
 	int i, acmd = 0;
@@ -3330,40 +3320,6 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				sendto_flag(SCH_NOTICE, "%s changed value of "
 					"CACCEPT to %s", sptr->name, parv[2]);
 				break;
-			case TSET_SPLIT:
-			{
-				int tmp;
-
-				tmp = atoi(parv[2]);
-				if (tmp < SPLIT_SERVERS)
-					tmp = SPLIT_SERVERS;
-				if (tmp != iconf.split_minservers)
-				{
-					sendto_flag(SCH_NOTICE, "%s changed"
-						" value of SPLIT_SERVERS"
-						" from %d to %d", sptr->name,
-						iconf.split_minservers, tmp);
-					iconf.split_minservers = tmp;
-				}
-				if (parc > 3)
-				{
-					tmp = atoi(parv[3]);
-					if (tmp < SPLIT_USERS)
-						tmp = SPLIT_USERS;
-				}
-				else
-					tmp = iconf.split_minusers;
-				if (tmp != iconf.split_minusers)
-				{
-					sendto_flag(SCH_NOTICE, "%s changed"
-						" value of SPLIT_USERS"
-						" from %d to %d", sptr->name,
-						iconf.split_minusers, tmp);
-					iconf.split_minusers = tmp;
-				}
-				check_split();
-				break;
-			}
 		} /* switch(acmd) */
 	} /* parc > 2 */
 
@@ -3385,12 +3341,6 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			sendto_one(sptr, ":%s NOTICE %s :CACCEPT = %s", ME,
 				parv[0], iconf.caccept == 2 ? "SPLIT" :
 				iconf.caccept == 1 ? "ON" : "OFF");
-		}
-		if (acmd & TSET_SPLIT)
-		{
-			sendto_one(sptr, ":%s NOTICE %s :SPLIT = SS %d SU %d",
-				ME, parv[0], iconf.split_minservers,
-				iconf.split_minusers);
 		}
 	}
 	return 1;
@@ -3817,6 +3767,11 @@ static void report_listeners(aClient *sptr, char *to)
 		{
 			if (iconf.caccept == 0)
 				what = "noaccept";
+			/*
+			 * 2011-01-20  Piotr Kucharski
+			 *  * s_bsd.c/read_listener(), s_serv.c/report_listeners(): use IsSplit()
+			 *    instead of iconf.split==1 (reported by BR).
+			 */
 			else if (iconf.caccept == 2 && IsSplit())
 				what = "splitnoaccept";
 			else

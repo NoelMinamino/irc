@@ -134,11 +134,6 @@ This module is for authentication TCP connections using the protocol
 defined in RFC 1413 (which obsoletes RFC 931).  It is always loaded, and
 does not recognize the \fIhost\fP nor \fIip\fP fields.
 .TP
-.B lhex
-This module acts as a proxy, communicating with a LHEx server to perform
-authentication of client connections.  It takes a single (mandatory)
-option, which is the IP-address of the LHEx server to use.
-.TP
 .B webproxy
 This module performs a basic HTTP CONNECT to verify that the host where the
 connection originated from doesn't run an open WWW proxy.
@@ -159,23 +154,32 @@ this parameter, module will accept any "HTTP/1.? 200" with an exception
 of servers sending "Date:" header along (which is common with some
 Apache+PHP configurations).
 
+.TP
+.B DNSBL
+This module performs a DNS query to check if an IP address is blacklisted.
+
+This module understands 3 options:
+.B log
+to log the IP which is listed on the DNSBL
+.B reject
+to reject the connection which is listed on the DNSBL
+.B paranoid
+Double check that the DNSBL is actually responding a 127.0.0.x IP
+.B servers
+A comma-separated list of DNSBL domains which are checked. This iauth module cannot
+check which DNSBL type is used so only use for DNSBLs suitable where all
+registrations are blocked.
+
 .SH EXAMPLE
 The following file will cause the IRC daemon to reject all connections
 originating from a system where an open proxy is running for hosts within
 *.fr and *.enserb.u-bordeaux.fr but not for other hosts matching
 *.u-bordeaux.fr.  For all connections, an ident lookup (RFC 1413) will be
 performed as well as checking for WWW proxy on port 8080 and 3128.
-In addition, every connection is authenticated with the LHEx
-server at IP-address 127.0.0.1. Client will be let in after ident and
-lhex are done but if socks or webproxy finds an open proxy, client will
-be removed asap.
 
 .RS
 .nf
 module rfc931
-
-module lhex
-        option = 127.0.0.1
 
 delayed
 
@@ -194,6 +198,9 @@ module webproxy
         option = reject,careful
         port = 3128
 
+module dnsbl
+	option = log,reject,paranoid,servers=bl1.example.org,bl2.example.org
+	reason = Denied access (DNSBL)
 .fi
 .RE
 .SH CAVEATS

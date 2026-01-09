@@ -28,25 +28,26 @@
 #else /* SUPPORT_C */
 #define EXTERN
 #endif /* SUPPORT_C */
-#ifdef INET6
 EXTERN char ipv6string[INET6_ADDRSTRLEN];
-#endif
 EXTERN char *mystrdup (char *s);
 #if !defined(HAVE_STRTOKEN)
 EXTERN char *strtoken (char **save, char *str, char *fs);
 #endif /* HAVE_STRTOKEN */
 #if !defined(HAVE_STRTOK)
-EXTERN char *strtok (char *str, char *fs);
+/*
+ * 2014-08-21  Piotr Kucharski
+ *  * support.c/support_ext.h: use const char for second param of strtok.
+ */
+EXTERN char *strtok (char *str, const char *fs);
 #endif /* HAVE_STRTOK */
+EXTERN int snprintf_append(char *str, int size, int pos, const char *fmt, ...);
 #if !defined(HAVE_STRERROR)
 EXTERN char *strerror (int err_no);
 #endif /* HAVE_STRERROR */
 EXTERN char *myctime (time_t value);
 EXTERN char *mybasename (char *);
-#ifdef INET6
 EXTERN char *inetntop(int af, const void *in, char *local_dummy, size_t the_size);
 EXTERN int inetpton(int af, const char *src, void *dst);
-#endif
 #if !defined(HAVE_INET_NTOA)
 EXTERN char *inetntoa (char *in);
 #endif /* HAVE_INET_NTOA */
@@ -71,7 +72,6 @@ EXTERN char *MyMalloc (size_t x);
 EXTERN char *MyRealloc (char *x, size_t y);
 #endif /* DEBUGMODE && !CLIENT_COMPILE && !DO_DEBUG_MALLOC */
 EXTERN int dgets (int fd, char *buf, int num);
-EXTERN char *make_version(void);
 EXTERN char **make_isupport(void);
 #ifdef SOLARIS_2_3
 EXTERN struct hostent *solaris_gethostbyname (const char *name);

@@ -154,7 +154,11 @@ void	add_class(int class, int ping, int confreq, int maxli, int sendq,
 		}
 	}
 #endif
-
+	/*
+	 * 2014-04-19  Kurt Roeckx
+	 *  * class.c/add_class(): Don't allow setting negative amount of max
+	 *    clients.
+	 */
 	if (maxli < 0)
 	{
 		maxli = 0;
@@ -195,11 +199,7 @@ void	add_class(int class, int ping, int confreq, int maxli, int sendq,
 	if (cidrlen > 0 && CidrLen(p) == 0 && p->ip_limits == NULL)
 	{
 		CidrLen(p) = cidrlen;
-#  ifdef INET6
 		p->ip_limits = (struct _patricia_tree_t *) patricia_new(128);
-#  else
-		p->ip_limits = (struct _patricia_tree_t *) patricia_new(32);
-#  endif
 	}
 	if (CidrLen(p) != cidrlen)
 	{

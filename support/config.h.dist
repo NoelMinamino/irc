@@ -497,11 +497,7 @@
 /*
 ** Define delimiter of fields in ircd.conf.
 */
-#ifdef INET6
-# define IRCDCONF_DELIMITER '%'
-#else
-# define IRCDCONF_DELIMITER ':'
-#endif
+#define IRCDCONF_DELIMITER '|'
 
 /*
  * Max number of channels a user is allowed to join.
@@ -543,8 +539,6 @@
  *
  * Defining to 0 disables entering split-mode.
  */
-#define DEFAULT_SPLIT_USERS	65000
-#define DEFAULT_SPLIT_SERVERS	80
 
 /*
 ** Notice sent to connecting users if the server is in the split-mode.
@@ -727,7 +721,7 @@
 
 /*
 ** If you don't feel your users should use too long nicknames, you can
-** restrict length of their dnicks here.
+** restrict length of their nicks here.
 */
 #define LOCALNICKLEN 15
 
@@ -785,8 +779,28 @@
 #define CACCEPT_DEFAULT 2
 
 /* Minimum values admin can set. */
-#define SPLIT_USERS	50000
-#define SPLIT_SERVERS	50
+#define SPLIT_USERS 5000
+#define SPLIT_SERVERS	10
+
+/************************************************************************
+ *
+ * whoistls (see doc/whoistls.txt)
+ *
+ * WHOISTLS
+ *
+ *  define to the message you want to show in WHOIS
+ *  for clients connected via SSL/TLS
+ *
+ * WHOISTLS_NOTICE
+ *
+ *  undef to disable sending a notice to clients connecting with SSL/TLS,
+ *  or define to the message you want to send
+ *
+ * *** Remember to mark SSL/TLS encrypted P-lines with the T flag ***
+ *
+ */
+#define WHOISTLS "is a Secure Connection (SSL/TLS)"
+#define WHOISTLS_NOTICE "Your connection is secure (SSL/TLS)."
 
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
@@ -872,8 +886,8 @@
 ** Make sure that if zlib isn't found, or you don't want to use it, that you
 ** don't define ZIP_LINKS
 */
-#ifndef	USE_ZLIB
-#undef	ZIP_LINKS
+#if	!defined(USE_ZLIB) && defined(ZIP_LINKS)
+# error ZIP_LINKS defined but no ZLIB available
 #endif
 
 #if defined(TIMEDKLINES)
@@ -933,12 +947,6 @@
 
 #if defined(MINLOCALNICKLEN) && (MINLOCALNICKLEN > LOCALNICKLEN)
 #error MINLOCALNICKLEN bigger than (max)LOCALNICKLEN
-#endif
-
-/* we should probably not bother with that :) */
-#if !defined(NBLOCK_POSIX) && !defined(NBLOCK_BSD) && !defined(NBLOCK_SYSV)
-#undef LISTENER_MAXACCEPT
-#define LISTENER_MAXACCEPT 1
 #endif
 
 /* well, we save some memory if we don't actually need either of the hashes */
